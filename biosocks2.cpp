@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cerrno>
 #include <tr1/memory>
 #include <cstdio>
 #include <pthread.h>
