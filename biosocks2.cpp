@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <netdb.h>
 
+// pass -f switch to biosocks2 to run in foreground when debugging
+
 const int listenPort = 12345;
 const char* listenIP = "0.0.0.0";
 const bool authRequired = true;
@@ -38,39 +40,48 @@ class Condition;
 class Mutex
 {
   pthread_mutex_t mutex;
-  
+
+  Mutex(const Mutex&);
+  Mutex& operator=(const Mutex&);
+
 public:
   Mutex() { pthread_mutex_init(&mutex, 0); }
   ~Mutex() { pthread_mutex_destroy(&mutex); }
-  
+
   void Lock() { pthread_mutex_lock(&mutex); }
   void Unlock() { pthread_mutex_unlock(&mutex); }
-  
+
   friend class Condition;
 };
 
 class ScopeLock
 {
   Mutex& mutex;
-  
+
+  ScopeLock(const ScopeLock&);
+  ScopeLock& operator=(const ScopeLock&);
+
 public:
-  ScopeLock(Mutex& mutex) : mutex(mutex) { mutex.Lock(); }  
+  ScopeLock(Mutex& mutex) : mutex(mutex) { mutex.Lock(); }
   ~ScopeLock() { mutex.Unlock(); }
 };
 
 class Condition
 {
   pthread_cond_t cond;
-  
+
+  Condition(const Condition&);
+  Condition& operator=(const Condition&);
+
 public:
   Condition() { pthread_cond_init(&cond, 0); }
   ~Condition() { pthread_cond_destroy(&cond); }
-  
+
   void Wait(Mutex& mutex)
   {
     pthread_cond_wait(&cond, &mutex.mutex);
   }
-  
+
   void Signal() { pthread_cond_signal(&cond); }
 };
 
@@ -93,7 +104,7 @@ bool Readn(int s, char *buffer, ssize_t n)
     len += ret;
   }
 
-  return true;  
+  return true;
 }
 
 bool Writen(int s, char *buffer, ssize_t n)
@@ -111,11 +122,11 @@ bool Writen(int s, char *buffer, ssize_t n)
     {
       errno = ECONNRESET;
       return -1;
-    }    
+    }
     len += ret;
   }
 
-  return true;  
+  return true;
 }
 
 bool IPAllowed(const char* ip)
@@ -141,7 +152,10 @@ class Client
   int dstSock;
   char ip[INET6_ADDRSTRLEN];
   char buffer[BUFSIZ];
-  
+
+  Client(const Client&);
+  Client& operator=(const Client&);
+
   bool Accept();
   bool Auth();
   bool Readn(size_t len);
@@ -151,22 +165,22 @@ class Client
   void Relay();
   bool Connect();
   bool Resolve(const char* domain);
- 
+
 public:
-  Client(Server& server) : 
-    server(server), 
+  Client(Server& server) :
+    server(server),
     srcAddr(reinterpret_cast<struct sockaddr*>(&srcStor)),
     dstAddr(reinterpret_cast<struct sockaddr*>(&dstStor)),
     srcSock(-1),
     dstSock(-1)
   { }
-    
+
   ~Client()
   {
     if (srcSock != -1) close(srcSock);
     if (dstSock != -1) close(dstSock);
   }
-  
+
   void Handle();
 };
 
@@ -180,22 +194,23 @@ class Server
   Condition poolCond;
   unsigned poolClientsNeeded;
 
-  Server() : sock(-1), addr(reinterpret_cast<struct sockaddr*>(&stor)),
+  Server(const Server&);
+  Server& operator=(const Server&);
+
+public:
+  Server() :
+    sock(-1),
+    addr(reinterpret_cast<struct sockaddr*>(&stor)),
     poolClientsNeeded(5)
   {
     memset(&stor, 0, sizeof(stor));
   }
-  
-  static Server instance;
-  
-public:  
-  static Server& Instance() { return instance; }
 
   ~Server()
   {
     if (sock != -1) close(sock);
   }
-  
+
   bool Listen(const char* ip, int port);
   int Accept(struct sockaddr& addr);
   void LaunchClient();
@@ -212,7 +227,7 @@ bool Client::Accept()
     perror("accept");
     return false;
   }
-  
+
   socklen_t len = sizeof(srcStor);
   if (getpeername(srcSock, srcAddr, &len) < 0)
   {
@@ -221,10 +236,10 @@ bool Client::Accept()
     srcSock = -1;
     return false;
   }
-  
+
   if (srcAddr->sa_family == AF_INET)
   {
-    if (!inet_ntop(AF_INET, &reinterpret_cast<struct 
+    if (!inet_ntop(AF_INET, &reinterpret_cast<struct
             sockaddr_in*>(srcAddr)->sin_addr, ip, sizeof(ip)))
     {
       perror("inet_ntop");
@@ -233,14 +248,14 @@ bool Client::Accept()
   }
   else
   {
-    if (!inet_ntop(AF_INET6, &reinterpret_cast<struct 
+    if (!inet_ntop(AF_INET6, &reinterpret_cast<struct
             sockaddr_in6*>(srcAddr)->sin6_addr, ip, sizeof(ip)))
     {
       perror("inet_ntop");
       return false;
     }
   }
-  
+
   return true;
 }
 
@@ -249,15 +264,10 @@ bool Client::Readn(size_t len)
   memset(buffer, 0, sizeof(buffer));
   if (!::Readn(srcSock, buffer, len))
   {
-    //throw -1;
-    perror("readn");
+    if (errno != ECONNRESET) perror("readn");
     return false;
   }
-  
-  /*fprintf(stderr, "readn:");
-  for (size_t i =  0; i < len; ++i) fprintf(stderr, " %i", buffer[i]);
-  fprintf(stderr, "\n");*/
-  
+
   return true;
 }
 
@@ -265,13 +275,9 @@ bool Client::Writen(size_t len)
 {
   if (!::Writen(srcSock, buffer, len))
   {
-    perror("writen");
+    if (errno != ECONNRESET) perror("writen");
     return false;
   }
-  
-  /*fprintf(stderr, "writen:");
-  for (size_t i =  0; i < len; ++i) fprintf(stderr, " %i", buffer[i]);
-  fprintf(stderr, "\n");*/
 
   return true;
 }
@@ -284,67 +290,67 @@ bool Client::Auth()
     fprintf(stderr, "invalid socks version\n");
     return false;
   }
-  
+
   size_t methods = static_cast<int>(buffer[1]);
   if (methods <= 0)
   {
     fprintf(stderr, "invalid number of auth methods\n");
     return false;
   }
-  
+
   if (!Readn(methods)) return false;
-  
+
   char method = MethodInvalid;
   for (size_t i = 0; i < methods; ++i)
   {
     if (buffer[i] == MethodNone && !authRequired && method != MethodUsername)
       method = buffer[i];
     else
-    if (buffer[i] == MethodUsername) 
+    if (buffer[i] == MethodUsername)
       method = buffer[i];
   }
-  
+
   buffer[0] = SocksV5;
   buffer[1] = method;
   if (!Writen(2)) return false;
-  
+
   if (method == MethodInvalid)
   {
     fprintf(stderr, "unable to negotiate a suitable authetication method\n");
     return false;
   }
-  
+
   if (method == MethodNone) return true;
-  
+
   if (!Readn(2)) return false;
   size_t usernameLen = static_cast<size_t>(buffer[1]);
   char username[256 + 1];
-  
+
   if (usernameLen > sizeof(username))
   {
     fprintf(stderr, "username longer than 256 characters\n");
     return false;
   }
-  
+
   if (!Readn(usernameLen)) return false;
   memcpy(username, buffer, usernameLen);
   username[usernameLen] = '\0';
-  
+
   if (!Readn(1)) return false;
   size_t passwordLen = static_cast<size_t>(buffer[0]);
   char password[256 + 1];
-  
+
   if (!Readn(passwordLen)) return false;
   memcpy(password, buffer, passwordLen);
   password[passwordLen] = '\0';
-  
+
   buffer[0] = 0x01;
-  
+
   if (strcmp(authUsername, username) ||
       strcmp(authPassword, password))
   {
     buffer[1] = ResultFail;
-    
+
     if (!Writen(2)) return false;
     fprintf(stderr, "username / password authentication failed\n");
     return false;
@@ -352,7 +358,7 @@ bool Client::Auth()
 
   buffer[1] = ResultSuccess;
   if (!Writen(2)) return false;
-  
+
   return true;
 }
 
@@ -371,12 +377,12 @@ bool Client::Connect()
     perror("connect");
     result = ResultFail;
   }
-    
+
   size_t len = 0;
   buffer[len++] = SocksV5;
   buffer[len++] = result;
   buffer[len++] = 0x00;
-  
+
   if (dstAddr->sa_family == AF_INET6)
   {
     buffer[len++] = AddressIPv6;
@@ -395,7 +401,7 @@ bool Client::Connect()
     memcpy(buffer + len, &dstAddr4->sin_port, sizeof(dstAddr4->sin_port));
     len += sizeof(dstAddr4->sin_port);
   }
-  
+
   if (result == ResultFail) memset(dstAddr, 0, sizeof(dstStor));
   if (!Writen(len)) return false;
   return result == ResultSuccess;
@@ -408,7 +414,7 @@ bool Client::Resolve(const char* domain)
   hints.ai_family = PF_UNSPEC;
   hints.ai_flags = AI_PASSIVE;
   hints.ai_socktype = SOCK_STREAM;
-  
+
   struct addrinfo* res = 0;
   if (getaddrinfo(domain, 0, &hints, &res)) return false;
 
@@ -427,7 +433,7 @@ bool Client::Resolve(const char* domain)
       break;
     }
   }
-  
+
   freeaddrinfo(res);
   return cur != 0;
 }
@@ -459,7 +465,7 @@ bool Client::Command()
       dstAddr6->sin6_family = AF_INET6;
       break;
     }
-    case AddressDomain  : 
+    case AddressDomain  :
     {
       if (!Readn(1)) return false;
       size_t len = static_cast<size_t>(buffer[0]);
@@ -478,20 +484,20 @@ bool Client::Command()
       return false;
     }
   }
-  
+
   if (!Readn(2)) return false;
-  
+
   if (dstAddr->sa_family == AF_INET)
   {
-    memcpy(&reinterpret_cast<struct sockaddr_in*>(dstAddr)->sin_port, 
+    memcpy(&reinterpret_cast<struct sockaddr_in*>(dstAddr)->sin_port,
           buffer, sizeof(uint16_t));
   }
   else
   {
-    memcpy(&reinterpret_cast<struct sockaddr_in6*>(dstAddr)->sin6_port, 
+    memcpy(&reinterpret_cast<struct sockaddr_in6*>(dstAddr)->sin6_port,
           buffer, sizeof(uint16_t));
   }
-          
+
   return Connect();
 }
 
@@ -499,9 +505,9 @@ bool Client::Relay(int readSock, int writeSock)
 {
   ssize_t len = read(readSock, buffer, sizeof(buffer));
   if (len <= 0) return false;
-  
+
   if (!::Writen(writeSock, buffer, len)) return false;
-  
+
   return true;
 }
 
@@ -509,17 +515,17 @@ void Client::Relay()
 {
   fd_set set;
   int max = (srcSock > dstSock ? srcSock : dstSock) + 1;
-  
+
   ssize_t len;
   while (true)
   {
     FD_ZERO(&set);
     FD_SET(srcSock, &set);
     FD_SET(dstSock, &set);
-    
+
     int n = select(max, &set, 0, 0, 0);
     if (n <= 0) break;
-    
+
     if (FD_ISSET(srcSock, &set) && !Relay(srcSock, dstSock)) break;
     if (FD_ISSET(dstSock, &set) && !Relay(dstSock, srcSock)) break;
   }
@@ -533,7 +539,7 @@ void Client::Handle()
     fprintf(stderr, "connections not allowed from ip: %s\n", ip);
     return;
   }
-  
+
   if (!Auth()) return;
   if (!Command()) return;
   Relay();
@@ -542,13 +548,12 @@ void Client::Handle()
 
 void* ThreadMain(void* arg)
 {
-  std::auto_ptr<Client> client(reinterpret_cast<Client*>(arg));
+  std::auto_ptr<Client> client(static_cast<Client*>(arg));
   client->Handle();
 }
 
 // SERVER IMPLEMENTATION
 
-Server Server::instance;
 
 bool Server::Listen(const char* ip, int port)
 {
@@ -573,14 +578,14 @@ bool Server::Listen(const char* ip, int port)
     printf("invalid listen ip address\n");
     return false;
   }
-  
+
   sock = socket(addr->sa_family, SOCK_STREAM, 0);
   if (sock < 0)
   {
     perror("socket");
     return false;
   }
-  
+
   int optVal = 1;
   setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optVal, sizeof(optVal));
 
@@ -591,7 +596,7 @@ bool Server::Listen(const char* ip, int port)
     sock = -1;
     return false;
   }
-  
+
   if (listen(sock, 100) < 0)
   {
     perror("listen");
@@ -599,13 +604,13 @@ bool Server::Listen(const char* ip, int port)
     sock = -1;
     return false;
   }
-  
+
   return true;
 }
 
 int Server::Accept(struct sockaddr& addr)
 {
-  socklen_t len;
+  socklen_t len = sizeof(addr);
   acceptMutex.Lock();
   int cliSock = accept(sock, &addr, &len);
   int errno_ = errno;
@@ -615,7 +620,7 @@ int Server::Accept(struct sockaddr& addr)
   ++poolClientsNeeded;
   poolCond.Signal();
   poolMutex.Unlock();
-  
+
   errno = errno_;
   return cliSock;
 }
@@ -649,11 +654,16 @@ int main(int argc, char** argv)
   bool foreground = false;
   if (argc >= 2 && argv[1] == "-f") foreground = true;
 
-  Server& server(Server::Instance());  
+  Server server;
   if (!server.Listen(listenIP, listenPort)) return 1;
-  
+
   printf("biosocks v2 listening on %s %i ..\n", listenIP, listenPort);
-  if (foreground || !fork()) server.Handle();
+  if (foreground || !fork())
+  {
+    freopen("/dev/null", "w", stdout);
+    freopen("/dev/null", "w", stderr);
+    server.Handle();
+  }
 
   return 0;
 }
