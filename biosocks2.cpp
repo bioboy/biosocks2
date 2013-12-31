@@ -648,6 +648,11 @@ void Server::Handle()
   }
 }
 
+void DisableOutput()
+{
+  FILE* f1 = freopen("/dev/null", "w", stdout); (void) f1;
+  FILE *f2 = freopen("/dev/null", "w", stderr); (void) f2;
+}
 
 int main(int argc, char** argv)
 {
@@ -660,8 +665,7 @@ int main(int argc, char** argv)
   printf("biosocks v2 listening on %s %i ..\n", listenIP, listenPort);
   if (foreground || !fork())
   {
-    freopen("/dev/null", "w", stdout);
-    freopen("/dev/null", "w", stderr);
+    DisableOutput();
     server.Handle();
   }
 
