@@ -29,11 +29,11 @@ const char* allowedIPs[] =
 
 const unsigned numAllowedIPs = sizeof(allowedIPs) / sizeof(char*);
 
-enum SocksVersion { SocksV5 = 0x05 };
-enum SocksMethod { MethodNone = 0x00, MethodUsername = 0x02, MethodInvalid = 0xFF };
-enum SocksResult { ResultSuccess = 0x00, ResultFail = 0x01 };
-enum SocksAddress { AddressIPv4 = 0x01, AddressDomain = 0x03, AddressIPv6 = 0x04 };
-enum SocksCommand { CommandConnect = 0x01, CommandBind = 0x02 };
+const char SocksV5 = 0x05;
+const char MethodNone = 0x00, MethodUsername = 0x02, MethodInvalid = char(0xFF);
+const char ResultSuccess = 0x00, ResultFail = 0x01;
+const char AddressIPv4 = 0x01, AddressDomain = 0x03, AddressIPv6 = 0x04;
+const char CommandConnect = 0x01, CommandBind = 0x02;
 
 class Condition;
 
@@ -314,7 +314,7 @@ bool Client::Auth()
   buffer[1] = method;
   if (!Writen(2)) return false;
 
-  if (method == (char) MethodInvalid)
+  if (method == MethodInvalid)
   {
     fprintf(stderr, "unable to negotiate a suitable authetication method\n");
     return false;
