@@ -131,7 +131,7 @@ bool Writen(int s, char *buffer, ssize_t n)
 
 bool IPAllowed(const char* ip)
 {
-  for (int i = 0; i < numAllowedIPs; ++i)
+  for (unsigned i = 0; i < numAllowedIPs; ++i)
   {
     if (!fnmatch(allowedIPs[i], ip, 0)) return true;
   }
@@ -314,7 +314,7 @@ bool Client::Auth()
   buffer[1] = method;
   if (!Writen(2)) return false;
 
-  if (method == MethodInvalid)
+  if (method == (char) MethodInvalid)
   {
     fprintf(stderr, "unable to negotiate a suitable authetication method\n");
     return false;
@@ -516,7 +516,6 @@ void Client::Relay()
   fd_set set;
   int max = (srcSock > dstSock ? srcSock : dstSock) + 1;
 
-  ssize_t len;
   while (true)
   {
     FD_ZERO(&set);
@@ -550,6 +549,7 @@ void* ThreadMain(void* arg)
 {
   std::auto_ptr<Client> client(static_cast<Client*>(arg));
   client->Handle();
+  return NULL;
 }
 
 // SERVER IMPLEMENTATION
@@ -657,7 +657,7 @@ void DisableOutput()
 int main(int argc, char** argv)
 {
   bool foreground = false;
-  if (argc >= 2 && argv[1] == "-f") foreground = true;
+  if (argc >= 2 && !strcmp(argv[1], "-f")) foreground = true;
 
   Server server;
   if (!server.Listen(listenIP, listenPort)) return 1;
