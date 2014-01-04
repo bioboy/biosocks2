@@ -212,7 +212,7 @@ public:
   }
 
   bool Listen(const char* ip, int port);
-  int Accept(struct sockaddr& addr);
+  int Accept(struct sockaddr& addr, socklen_t len);
   void LaunchClient();
   void Handle();
 };
@@ -221,7 +221,7 @@ public:
 
 bool Client::Accept()
 {
-  srcSock = server.Accept(*srcAddr);
+  srcSock = server.Accept(*srcAddr, sizeof(struct sockaddr_storage));
   if (srcSock < 0)
   {
     perror("accept");
@@ -608,9 +608,8 @@ bool Server::Listen(const char* ip, int port)
   return true;
 }
 
-int Server::Accept(struct sockaddr& addr)
+int Server::Accept(struct sockaddr& addr, socklen_t len)
 {
-  socklen_t len = sizeof(addr);
   acceptMutex.Lock();
   int cliSock = accept(sock, &addr, &len);
   int errno_ = errno;
