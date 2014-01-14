@@ -664,7 +664,7 @@ int main(int argc, char** argv)
   printf("biosocks v2 listening on %s %i ..\n", listenIP, listenPort);
   if (foreground || !fork())
   {
-    DisableOutput();
+    if (!foreground) DisableOutput();
     server.Handle();
   }
 
