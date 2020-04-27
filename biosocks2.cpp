@@ -547,7 +547,7 @@ void Client::Handle()
 
 void* ThreadMain(void* arg)
 {
-  std::auto_ptr<Client> client(static_cast<Client*>(arg));
+  std::unique_ptr<Client> client(static_cast<Client*>(arg));
   client->Handle();
   return NULL;
 }
